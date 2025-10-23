@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Image Processing API</title>
+</head>
+<body>
+  <div class="container">
+    <h1>Image Processing API Demo</h1>
+
+    <div class="section">
+      <h2>Upload Single Image</h2>
+      <input type="file" id="singleFile" accept="image/*">
+      <button onclick="uploadSingle()">Upload Single</button>
+    </div>
+
+    <div class="section">
+      <h2>Upload Multiple Images</h2>
+      <input type="file" id="multipleFiles" accept="image/*" multiple>
+      <button onclick="uploadMultiple()">Upload Multiple</button>
+    </div>
+
+    <div class="section">
+      <h2>Generate Responsive Images</h2>
+      <input type="file" id="responsiveFile" accept="image/*">
+      <button onclick="uploadResponsive()">Generate Responsive</button>
+    </div>
+
+    <div class="section">
+      <h2>Process Image</h2>
+      <input type="file" id="processFile" accept="image/*">
+      <div>
+        <label>Width: <input type="number" id="width" value="400"></label>
+        <label>Height: <input type="number" id="height" value="300"></label>
+        <label>Format:
+          <select id="format">
+            <option value="jpeg">JPEG</option>
+            <option value="png">PNG</option>
+            <option value="webp">WebP</option>
+            <option value="avif">AVIF</option>
+          </select>
+        </label>
+        <label>Quality: <input type="number" id="quality" value="85" min="1" max="100"></label>
+        <label><input type="checkbox" id="sharpen"> Sharpen</label>
+      </div>
+      <button onclick="processImage()">Process Image</button>
+    </div>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:3000';
+
+    async function uploadSingle() {
+      const fileInput = document.getElementById('singleFile');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert('Please select an image');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      try {
+        const response = await fetch(`${API_URL}/api/upload/single`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+        displayResult('Single Upload', data);
+      } catch (error) {
+        console.error('Upload failed:', error);
+      }
+    }
+
+    async function uploadMultiple() {
+      const fileInput = document.getElementById('multipleFiles');
+      const files = fileInput.files;
+
+      if (files.length === 0) {
+        alert('Please select images');
+        return;
+      }
+
+      const formData = new FormData();
+      for (let file of files) {
+        formData.append('images', file);
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/api/upload/multiple`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+        displayResult('Multiple Upload', data);
+      } catch (error) {
+        console.error('Upload failed:', error);
+      }
+    }
+
+    async function uploadResponsive() {
+      const fileInput = document.getElementById('responsiveFile');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert('Please select an image');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('image', file);
+
+      try {
+        const response = await fetch(`${API_URL}/api/upload/responsive`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+        displayResponsiveResult(data);
+      } catch (error) {
+        console.error('Upload failed:', error);
+      }
+    }
+
+    let currentFilename = null;
+    let currentFileHash = null;
+
+    async function processImage() {
+      const fileInput = document.getElementById('processFile');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert('Please select an image');
+        return;
+      }
+
+      // Create a simple hash of the file to detect changes
+      const fileHash = file.name + file.size + file.lastModified;
+
+      let filename = currentFilename;
+
+      if (!filename || currentFileHash !== fileHash) {
+        console.log('Uploading new image...');
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+          const uploadResponse = await fetch(`${API_URL}/api/upload/single`, {
+            method: 'POST',
+            body: formData
+          });
+
+          const uploadData = await uploadResponse.json();
+          filename = uploadData.file.filename;
+          currentFilename = filename;
+          currentFileHash = fileHash;
+          console.log('Image uploaded, filename:', filename);
+        } catch (error) {
+          console.error('Upload failed:', error);
+          return;
+        }
+      } else {
+        console.log('Using cached filename:', filename);
+      }
+
+      const processOptions = {
+        width: parseInt(document.getElementById('width').value),
+        height: parseInt(document.getElementById('height').value),
+        format: document.getElementById('format').value,
+        quality: parseInt(document.getElementById('quality').value),
+        sharpen: document.getElementById('sharpen').checked
+      };
+
+      console.log('Processing options:', processOptions);
+
+      try {
+        const processResponse = await fetch(`${API_URL}/api/process/${filename}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(processOptions)
+        });
+
+        if (processResponse.ok) {
+          const blob = await processResponse.blob();
+          const imageUrl = URL.createObjectURL(blob);
+          displayProcessedImage(imageUrl, processOptions);
+        } else {
+          const errorData = await processResponse.json();
+          displayResult('Processing Error', errorData);
+        }
+      } catch (error) {
+        console.error('Processing failed:', error);
+      }
+    }
+
+    function displayProcessedImage(imageUrl, options) {
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = `
+        <div class="section">
+          <h3>Processed Image</h3>
+          <p><strong>Options:</strong> ${JSON.stringify(options, null, 2)}</p>
+          <img src="${imageUrl}" alt="Processed Image" style="max-width: 100%; height: auto;">
+          <p><a href="${imageUrl}" target="_blank">Download Processed Image</a></p>
+        </div>
+      `;
+    }
+
+    function displayResult(title, data) {
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = `
+        <div class="section">
+          <h3>${title} Result</h3>
+          <pre>${JSON.stringify(data, null, 2)}</pre>
+        </div>
+      `;
+    }
+
+    function displayResponsiveResult(data) {
+      const resultDiv = document.getElementById('result');
+
+      let html = '<div class="section"><h3>Responsive Images Generated</h3>';
+      html += '<div class="image-grid">';
+
+      data.responsive.forEach(img => {
+        html += `
+          <div class="image-item">
+            <h4>${img.size} (${img.width}x${img.height})</h4>
+            <img src="${API_URL}${img.url}" alt="${img.size}">
+            <p><a href="${API_URL}${img.url}" target="_blank">View Full Size</a></p>
+          </div>
+        `;
+      });
+
+      html += '</div></div>';
+      resultDiv.innerHTML = html;
+    }
+  </script>
+</body>
+</html>
